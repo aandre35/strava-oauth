@@ -53,7 +53,17 @@ def read_token_from_gcs(athlete_id):
 
 @app.route("/")
 def home():
-    """Page d'accueil simple pour vérifier que l'application est en ligne."""
+    """
+    Page d'accueil. Gère aussi la redirection depuis Strava si le paramètre
+    'code' est présent dans l'URL.
+    """
+    # Si la requête est une redirection de retour de l'OAuth Strava (contient un code)
+    if 'code' in request.args:
+        # Reconstruit l'URL de redirection vers /exchange_token avec les mêmes paramètres
+        query_params = request.query_string.decode('utf-8')
+        return redirect(f"/exchange_token?{query_params}")
+
+    # Sinon, affiche la page d'accueil normale
     return "✅ Strava OAuth Cloud Run app is running (GCS Version)"
 
 @app.route("/auth")
