@@ -11,7 +11,8 @@ try:
     STRAVA_CLIENT_ID = os.environ["STRAVA_CLIENT_ID"]
     STRAVA_CLIENT_SECRET = os.environ["STRAVA_CLIENT_SECRET"]
     REDIRECT_URI = os.environ["REDIRECT_URI"]
-    GCS_BUCKET_NAME = os.environ["GCS_BUCKET_NAME"] # NOUVEAU: Nom du bucket de stockage
+    GCS_BUCKET_NAME = os.environ["GCS_BUCKET_NAME"]
+    GCS_FOLDER_NAME = os.environ["GCS_FOLDER_NAME"] # NOUVEAU: Nom du dossier dans le bucket
 except KeyError as e:
     raise RuntimeError(f"Missing environment variable: {e}")
 
@@ -118,10 +119,10 @@ def get_activities(athlete_id):
         
         activities = response.json()
 
-        # --- NOUVEAU: Stockage dans Google Cloud Storage ---
+        # --- Stockage dans Google Cloud Storage en utilisant la variable pour le dossier ---
         if activities:
             # Créer un nom de fichier unique avec un timestamp
-            filename = f"activities/{athlete_id}/{int(time.time())}.json"
+            filename = f"{GCS_FOLDER_NAME}/{athlete_id}/{int(time.time())}.json"
             blob = bucket.blob(filename)
             
             # Uploader les données en tant que chaîne JSON
@@ -184,9 +185,9 @@ def sync_activities():
             
             activities = r.json()
 
-            # --- NOUVEAU: Stockage dans Google Cloud Storage ---
+            # --- Stockage dans Google Cloud Storage en utilisant la variable pour le dossier ---
             if activities:
-                filename = f"activities/{athlete_id}/sync_{int(time.time())}.json"
+                filename = f"{GCS_FOLDER_NAME}/{athlete_id}/sync_{int(time.time())}.json"
                 blob = bucket.blob(filename)
                 blob.upload_from_string(
                     data=json.dumps(activities, indent=2),
