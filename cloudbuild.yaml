@@ -23,4 +23,7 @@ steps:
 images:
   - 'gcr.io/$PROJECT_ID/strava-oauth'
 
+options:
+  logging: CLOUD_LOGGING_ONLY
+
 timeout: '900s'
