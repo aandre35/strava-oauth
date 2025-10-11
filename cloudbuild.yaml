@@ -19,6 +19,8 @@ steps:
       - '--allow-unauthenticated'
       - '--timeout'
       - '300s'
+      - '--update-secrets'
+      - 'STRAVA_CLIENT_ID=STRAVA_CLIENT_ID:latest,STRAVA_CLIENT_SECRET=STRAVA_CLIENT_SECRET:latest,REDIRECT_URI=REDIRECT_URI:latest'
 
 images:
   - 'gcr.io/$PROJECT_ID/strava-oauth'
