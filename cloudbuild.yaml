@@ -20,7 +20,7 @@ steps:
       - '--timeout'
       - '300s'
       - '--update-secrets'
-      - 'STRAVA_CLIENT_ID=STRAVA_CLIENT_ID:latest,STRAVA_CLIENT_SECRET=STRAVA_CLIENT_SECRET:latest,REDIRECT_URI=REDIRECT_URI:latest'
+      - 'STRAVA_CLIENT_ID=STRAVA_CLIENT_ID:latest,STRAVA_CLIENT_SECRET=STRAVA_CLIENT_SECRET:latest,REDIRECT_URI=REDIRECT_URI:latest,GCS_BUCKET_NAME=GCS_BUCKET_NAME:latest,GCS_FOLDER_NAME=GCS_FOLDER_NAME:latest'
       - '--service-account'
       - 'strava-oauth-sa@wly-customer-strava-aggregator.iam.gserviceaccount.com'
 
