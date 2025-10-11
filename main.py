@@ -1,19 +1,19 @@
 from flask import Flask, redirect, request, jsonify
 import os, requests, time, traceback, json
-from google.cloud import firestore
 from google.cloud import storage
-from google.api_core import exceptions # NOUVEL IMPORT
+from google.api_core import exceptions
 
 app = Flask(__name__)
 
 # --- Configuration ---
-# Il est recommandé de vérifier si les variables d'environnement existent au démarrage
 try:
     STRAVA_CLIENT_ID = os.environ["STRAVA_CLIENT_ID"]
     STRAVA_CLIENT_SECRET = os.environ["STRAVA_CLIENT_SECRET"]
     REDIRECT_URI = os.environ["REDIRECT_URI"]
     GCS_BUCKET_NAME = os.environ["GCS_BUCKET_NAME"]
-    GCS_FOLDER_NAME = os.environ["GCS_FOLDER_NAME"] # NOUVEAU: Nom du dossier dans le bucket
+    GCS_FOLDER_NAME = os.environ["GCS_FOLDER_NAME"]
+    # NOUVEAU : Un dossier dédié pour stocker les fichiers de tokens
+    GCS_TOKEN_FOLDER = os.environ.get("GCS_TOKEN_FOLDER", "strava_tokens")
 except KeyError as e:
     raise RuntimeError(f"Missing environment variable: {e}")
 
@@ -22,52 +22,39 @@ STRAVA_AUTH_URL = "https://www.strava.com/oauth/authorize"
 STRAVA_TOKEN_URL = "https://www.strava.com/oauth/token"
 STRAVA_API_URL = "https://www.strava.com/api/v3"
 
-# Clients Google Cloud
-db = firestore.Client()
+# Client Google Cloud Storage
 storage_client = storage.Client()
 bucket = storage_client.bucket(GCS_BUCKET_NAME)
 
-# --- NOUVELLE ROUTE DE DÉBOGAGE ---
-@app.route("/test_firestore")
-def test_firestore():
-    """
-    Une route simple pour tester la connexion et les permissions avec Firestore.
-    """
-    try:
-        test_collection = db.collection("test_debug_collection")
-        doc_id = "test_doc"
-        doc_ref = test_collection.document(doc_id)
 
-        print("Attempting to write to Firestore...")
-        doc_ref.set({"status": "ok", "timestamp": time.time()})
-        print("Write successful.")
+# --- Fonctions utilitaires pour la gestion des tokens dans GCS ---
 
-        print("Attempting to read from Firestore...")
-        doc = doc_ref.get()
-        print("Read successful.")
+def save_token_to_gcs(athlete_id, tokens):
+    """Sauvegarde les données du token dans un fichier JSON sur GCS."""
+    blob_name = f"{GCS_TOKEN_FOLDER}/{athlete_id}.json"
+    blob = bucket.blob(blob_name)
+    blob.upload_from_string(
+        data=json.dumps(tokens, indent=2),
+        content_type="application/json"
+    )
+    print(f"Tokens pour l'athlète {athlete_id} sauvegardés dans {blob_name}")
 
-        if doc.exists:
-            return jsonify({
-                "message": "Firestore test successful!",
-                "data_read": doc.to_dict()
-            }), 200
-        else:
-            return jsonify({"error": "Test document not found after writing."}), 500
+def read_token_from_gcs(athlete_id):
+    """Lit les données du token depuis un fichier JSON sur GCS."""
+    blob_name = f"{GCS_TOKEN_FOLDER}/{athlete_id}.json"
+    blob = bucket.blob(blob_name)
+    if not blob.exists():
+        return None
+    token_data = json.loads(blob.download_as_string())
+    return token_data
 
-    except Exception as e:
-        print(f"Firestore test failed: {e}")
-        traceback.print_exc()
-        return jsonify({
-            "error": "Firestore test failed.",
-            "details": str(e)
-        }), 500
 
 # --- Routes de l'application ---
 
 @app.route("/")
 def home():
     """Page d'accueil simple pour vérifier que l'application est en ligne."""
-    return "✅ Strava OAuth Cloud Run app is running"
+    return "✅ Strava OAuth Cloud Run app is running (GCS Version)"
 
 @app.route("/auth")
 def auth():
@@ -90,7 +77,6 @@ def exchange_token():
     if not code:
         return jsonify({"error": "Missing authorization code"}), 400
 
-    # Échange du code contre les tokens
     data = {
         "client_id": STRAVA_CLIENT_ID,
         "client_secret": STRAVA_CLIENT_SECRET,
@@ -100,39 +86,38 @@ def exchange_token():
 
     try:
         response = requests.post(STRAVA_TOKEN_URL, data=data)
-        response.raise_for_status()  # Lève une exception pour les codes d'erreur HTTP (4xx ou 5xx)
+        response.raise_for_status()
         tokens = response.json()
         athlete_id = tokens["athlete"]["id"]
 
-        # Stockage des tokens dans Firestore
-        doc_ref = db.collection("strava_tokens").document(str(athlete_id))
-        doc_ref.set({
+        # Stockage des tokens dans un fichier JSON sur GCS
+        save_token_to_gcs(athlete_id, {
             "access_token": tokens["access_token"],
             "refresh_token": tokens["refresh_token"],
             "expires_at": tokens["expires_at"]
         })
 
-        return jsonify({"message": f"Tokens for athlete {athlete_id} stored successfully."})
+        return jsonify({"message": f"Tokens pour l'athlète {athlete_id} stockés avec succès dans GCS."})
 
     except requests.exceptions.RequestException as e:
-        return jsonify({"error": "Failed to exchange token with Strava", "details": str(e)}), 502
+        return jsonify({"error": "Échec de l'échange du token avec Strava", "details": str(e)}), 502
     except Exception as e:
-        return jsonify({"error": "An internal error occurred", "details": str(e)}), 500
+        return jsonify({"error": "Une erreur interne est survenue", "details": str(e)}), 500
+
 
 @app.route("/activities/<athlete_id>")
 def get_activities(athlete_id):
     """Récupère les activités Strava, les retourne et les stocke dans GCS."""
     try:
-        doc_ref = db.collection("strava_tokens").document(str(athlete_id))
-        doc = doc_ref.get()
+        # Lire les tokens depuis GCS
+        token_data = read_token_from_gcs(athlete_id)
 
-        if not doc.exists:
-            return jsonify({"error": f"Tokens not found for athlete {athlete_id}. Please re-authenticate."}), 404
+        if token_data is None:
+            return jsonify({"error": f"Tokens non trouvés pour l'athlète {athlete_id}. Veuillez vous ré-authentifier."}), 404
 
-        token_data = doc.to_dict()
-
+        # Rafraîchir le token si nécessaire
         if token_data["expires_at"] < time.time():
-            print(f"Token for athlete {athlete_id} has expired. Refreshing...")
+            print(f"Le token pour l'athlète {athlete_id} a expiré. Rafraîchissement...")
             data = {
                 "client_id": STRAVA_CLIENT_ID,
                 "client_secret": STRAVA_CLIENT_SECRET,
@@ -144,8 +129,9 @@ def get_activities(athlete_id):
             
             new_tokens = response.json()
             token_data.update(new_tokens)
-            doc_ref.set(token_data)
-            print(f"Token for athlete {athlete_id} refreshed and updated in Firestore.")
+            # Mettre à jour le fichier de token dans GCS
+            save_token_to_gcs(athlete_id, token_data)
+            print(f"Token pour l'athlète {athlete_id} rafraîchi et mis à jour dans GCS.")
 
         # Récupérer les activités avec un token valide
         headers = {"Authorization": f"Bearer {token_data['access_token']}"}
@@ -155,93 +141,92 @@ def get_activities(athlete_id):
         
         activities = response.json()
 
-        # --- Stockage dans Google Cloud Storage en utilisant la variable pour le dossier ---
         if activities:
-            # Créer un nom de fichier unique avec un timestamp
             filename = f"{GCS_FOLDER_NAME}/{athlete_id}/{int(time.time())}.json"
             blob = bucket.blob(filename)
-            
-            # Uploader les données en tant que chaîne JSON
             blob.upload_from_string(
                 data=json.dumps(activities, indent=2),
                 content_type="application/json"
             )
-            print(f"Successfully uploaded {len(activities)} activities to {filename}")
+            print(f"Succès : {len(activities)} activités uploadées vers {filename}")
 
         return jsonify(activities)
 
-    except exceptions.NotFound: # MODIFICATION ICI
-         return jsonify({"error": f"Document for athlete {athlete_id} not found."}), 404
     except requests.exceptions.RequestException as e:
-        return jsonify({"error": "Failed to fetch data from Strava", "details": str(e)}), 502
+        return jsonify({"error": "Échec de la récupération des données depuis Strava", "details": str(e)}), 502
     except Exception as e:
-        print(f"An error occurred: {e}")
+        print(f"Une erreur est survenue : {e}")
         traceback.print_exc()
         if "PermissionDenied" in str(e) or (hasattr(e, 'code') and e.code == 403):
             return jsonify({
-                "error": "Database or Storage authentication error",
-                "details": f"Permission denied for project '{db.project}'. Check IAM roles for the Cloud Run service account (needs Firestore User and Storage Object Creator roles)."
+                "error": "Erreur d'authentification avec Storage",
+                "details": f"Permission refusée pour le projet. Vérifiez les rôles IAM pour le compte de service Cloud Run (a besoin de 'Créateur des objets de l'espace de stockage')."
             }), 403
             
-        return jsonify({"error": "An internal server error occurred.", "details": str(e)}), 500
+        return jsonify({"error": "Une erreur interne du serveur est survenue.", "details": str(e)}), 500
 
 
 @app.route("/sync_activities")
 def sync_activities():
     """Récupère les nouvelles activités pour tous les athlètes et les stocke dans GCS."""
     try:
-        athletes_ref = db.collection("strava_tokens")
-        athletes = athletes_ref.stream()
+        # Lister tous les fichiers de tokens dans GCS
+        blobs = storage_client.list_blobs(bucket, prefix=f"{GCS_TOKEN_FOLDER}/")
         results = {}
 
-        for doc in athletes:
-            athlete_id = doc.id
-            token_data = doc.to_dict()
-
-            if token_data["expires_at"] < time.time():
-                refresh_data = {
-                    "client_id": STRAVA_CLIENT_ID, "client_secret": STRAVA_CLIENT_SECRET,
-                    "grant_type": "refresh_token", "refresh_token": token_data["refresh_token"]
-                }
-                r = requests.post(STRAVA_TOKEN_URL, data=refresh_data)
-                if r.status_code != 200:
-                    results[athlete_id] = {"error": f"Failed to refresh token: {r.text}"}
-                    continue
-                new_tokens = r.json()
-                token_data.update(new_tokens)
-                athletes_ref.document(athlete_id).set(token_data)
-
-            headers = {"Authorization": f"Bearer {token_data['access_token']}"}
-            activities_url = f"{STRAVA_API_URL}/athlete/activities"
-            r = requests.get(activities_url, headers=headers)
-            
-            if r.status_code != 200:
-                results[athlete_id] = {"error": f"Failed to fetch activities: {r.text}"}
+        for blob in blobs:
+            if not blob.name.endswith(".json"):
                 continue
             
-            activities = r.json()
+            athlete_id = os.path.splitext(os.path.basename(blob.name))[0]
+            
+            try:
+                token_data = json.loads(blob.download_as_string())
 
-            # --- Stockage dans Google Cloud Storage en utilisant la variable pour le dossier ---
-            if activities:
-                filename = f"{GCS_FOLDER_NAME}/{athlete_id}/sync_{int(time.time())}.json"
-                blob = bucket.blob(filename)
-                blob.upload_from_string(
-                    data=json.dumps(activities, indent=2),
-                    content_type="application/json"
-                )
-                results[athlete_id] = {"status": "success", "activities_found": len(activities), "gcs_path": filename}
-            else:
-                results[athlete_id] = {"status": "success", "activities_found": 0}
-        
+                if token_data["expires_at"] < time.time():
+                    refresh_data = {
+                        "client_id": STRAVA_CLIENT_ID, "client_secret": STRAVA_CLIENT_SECRET,
+                        "grant_type": "refresh_token", "refresh_token": token_data["refresh_token"]
+                    }
+                    r = requests.post(STRAVA_TOKEN_URL, data=refresh_data)
+                    if r.status_code != 200:
+                        results[athlete_id] = {"error": f"Échec du rafraîchissement du token : {r.text}"}
+                        continue
+                    new_tokens = r.json()
+                    token_data.update(new_tokens)
+                    save_token_to_gcs(athlete_id, token_data)
+
+                headers = {"Authorization": f"Bearer {token_data['access_token']}"}
+                activities_url = f"{STRAVA_API_URL}/athlete/activities"
+                r = requests.get(activities_url, headers=headers)
+                
+                if r.status_code != 200:
+                    results[athlete_id] = {"error": f"Échec de la récupération des activités : {r.text}"}
+                    continue
+                
+                activities = r.json()
+
+                if activities:
+                    filename = f"{GCS_FOLDER_NAME}/{athlete_id}/sync_{int(time.time())}.json"
+                    activity_blob = bucket.blob(filename)
+                    activity_blob.upload_from_string(
+                        data=json.dumps(activities, indent=2),
+                        content_type="application/json"
+                    )
+                    results[athlete_id] = {"status": "succès", "activités trouvées": len(activities), "gcs_path": filename}
+                else:
+                    results[athlete_id] = {"status": "succès", "activités trouvées": 0}
+            
+            except Exception as e:
+                results[athlete_id] = {"error": f"Le traitement a échoué : {str(e)}"}
+
         return jsonify(results)
     except Exception as e:
-        print(f"An error occurred during sync: {e}")
+        print(f"Une erreur est survenue durant la synchronisation : {e}")
         traceback.print_exc()
-        return jsonify({"error": "Sync failed", "details": str(e)}), 500
+        return jsonify({"error": "La synchronisation a échoué", "details": str(e)}), 500
 
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)), debug=True)
-
-
 
