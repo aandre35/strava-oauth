@@ -6,7 +6,21 @@ steps:
     args: ['push', 'gcr.io/$PROJECT_ID/strava-oauth']
 
   - name: 'gcr.io/cloud-builders/gcloud'
-    args: ['run', 'deploy', 'strava-oauth', '--image', 'gcr.io/$PROJECT_ID/strava-oauth', '--platform', 'managed', '--region', 'europe-west1', '--allow-unauthenticated']
+    args: 
+      - 'run'
+      - 'deploy'
+      - 'strava-oauth'
+      - '--image'
+      - 'gcr.io/$PROJECT_ID/strava-oauth'
+      - '--platform'
+      - 'managed'
+      - '--region'
+      - 'europe-west1'
+      - '--allow-unauthenticated'
+      - '--timeout'
+      - '300s'
 
 images:
   - 'gcr.io/$PROJECT_ID/strava-oauth'
+
+timeout: '900s'
