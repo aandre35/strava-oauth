@@ -1,18 +1,10 @@
 # strava-oauth
 
 ## Overview
-This project is a Strava OAuth application built using Flask. It allows users to authenticate with Strava, exchange authorization codes for access tokens, and retrieve activities from the Strava API. The application stores tokens in Google Firestore.
+...existing code...
 
 ## Project Structure
-```
-strava-oauth
-├── src
-│   └── main.py          # Main application code
-├── Dockerfile           # Dockerfile for building the application image
-├── requirements.txt     # Python dependencies
-├── cloudbuild.yaml      # Google Cloud Build configuration
-└── README.md            # Project documentation
-```
+...existing code...
 
 ## Setup Instructions
 
@@ -22,32 +14,49 @@ strava-oauth
    cd strava-oauth
    ```
 
-2. **Set up environment variables:**
-   Ensure you have the following environment variables set:
+2. **Set up Google Cloud Project:**
+   ```bash
+   # Set the project ID
+   gcloud config set project whaly-customer-strava-aggregator
+
+   # Set up permissions for Cloud Build
+   gcloud projects add-iam-policy-binding wly-customer-strava-aggregator \
+       --member="serviceAccount:1087017681131@cloudbuild.gserviceaccount.com" \
+       --role="roles/run.admin"
+
+   gcloud projects add-iam-policy-binding wly-customer-strava-aggregator \
+       --member="serviceAccount:1087017681131@cloudbuild.gserviceaccount.com" \
+       --role="roles/iam.serviceAccountUser"
+   ```
+
+3. **Set up environment variables:**
+   ```bash
+   export PROJECT_ID=wly-customer-strava-aggregator
+   export PROJECT_NUMBER=1087017681131
+   ```
+   Also ensure you have these Strava-specific variables:
    - `STRAVA_CLIENT_ID`
    - `STRAVA_CLIENT_SECRET`
    - `PORT` (optional, defaults to 8080)
 
-3. **Install dependencies:**
-   You can install the required dependencies using:
+4. **Install dependencies:**
    ```bash
    pip install -r requirements.txt
    ```
 
-4. **Run the application:**
-   You can run the application locally using:
-   ```bash
-   python src/main.py
-   ```
-
 ## Deployment
-This application can be deployed to Google Cloud Run using Google Cloud Build. The `cloudbuild.yaml` file contains the necessary configuration for building and deploying the Docker image.
+Deploy to Cloud Run using Cloud Build:
+
+```bash
+# Manual deployment
+gcloud builds submit --project=whaly-customer-strava-aggregator
+
+# Check deployment status
+gcloud run services list --platform managed --project=whaly-customer-strava-aggregator --region=europe-west1
+```
 
 ## Usage
-- Navigate to `/` to check if the application is running.
-- Use the `/auth` route to initiate the Strava OAuth flow.
-- The `/exchange_token` route handles the exchange of the authorization code for access tokens.
-- The `/activities/<athlete_id>` route retrieves activities for a specified athlete.
+...existing code...
 
 ## License
-This project is licensed under the MIT License.
+...existing code...
