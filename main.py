@@ -1,6 +1,8 @@
 from flask import Flask, redirect, request, jsonify
 import os, requests
 from google.cloud import firestore  # pour stocker tokens
+import traceback
+import sys
 
 app = Flask(__name__)
 
@@ -69,21 +71,38 @@ def get_activities(athlete_id):
     
     """Récupère les activités Strava pour un athlète donné"""
     try:
-        print(f"Attempting to fetch activities for athlete {athlete_id}")
+        print(f"[DEBUG] Starting get_activities for athlete {athlete_id}")
+        print(f"[DEBUG] Firestore client initialized: {db}")
+        
         doc_ref = db.collection("strava_tokens").document(str(athlete_id))
-        print(f"Document reference created for {athlete_id}")
+        print(f"[DEBUG] Document reference created: {doc_ref}")
+        
         doc = doc_ref.get()
-        print(f"Document retrieved: exists={doc.exists if doc else 'No doc'}")
+        print(f"[DEBUG] Document retrieved: {doc}")
+        print(f"[DEBUG] Document exists: {doc.exists if doc else 'No doc'}")
+        
         if not doc.exists:
+            print(f"[ERROR] No tokens found for athlete {athlete_id}")
             return jsonify({"error": "Tokens not found"}), 404
 
-    except Exception as e:
-        import traceback
-        print(f"Firestore error: {str(e)}")
-        print("Full traceback:")
-        print(traceback.format_exc())
-        return jsonify({"error": "Database connection error"}), 500
-
+    except Exception as e:        
+        print(f"[ERROR] Firestore error type: {type(e)}")
+        print(f"[ERROR] Firestore error message: {str(e)}")
+        print("[ERROR] Full traceback:")
+        traceback.print_exc(file=sys.stdout)
+        
+        # Check if it's a credentials issue
+        if "Permission denied" in str(e):
+            print("[ERROR] Possible credentials issue - verify service account permissions")
+            return jsonify({
+                "error": "Database authentication error",
+                "details": "Service account permissions issue"
+            }), 500
+            
+        return jsonify({
+            "error": "Database connection error",
+            "details": str(e)
+        }), 500
     token_data = doc.to_dict()
 
     # Vérifier si le token a expiré
