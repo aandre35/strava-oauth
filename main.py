@@ -107,9 +107,6 @@ def get_activities(athlete_id):
     return jsonify(activities)
 
 
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
-
 @app.route("/sync_activities")
 def sync_activities():
     """Récupère les nouvelles activités pour tous les athlètes stockés"""
@@ -154,3 +151,6 @@ def sync_activities():
         results[athlete_id] = {"count": len(activities)}
 
     return jsonify(results)
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
