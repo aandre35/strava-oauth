@@ -3,3 +3,4 @@ requests==2.31.0
 google-cloud-firestore==2.11.1
 google-cloud-storage
 gunicorn==21.2.0
+google-api-core

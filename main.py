@@ -2,6 +2,7 @@ from flask import Flask, redirect, request, jsonify
 import os, requests, time, traceback, json
 from google.cloud import firestore
 from google.cloud import storage
+from google.api_core import exceptions # NOUVEL IMPORT
 
 app = Flask(__name__)
 
@@ -25,6 +26,41 @@ STRAVA_API_URL = "https://www.strava.com/api/v3"
 db = firestore.Client()
 storage_client = storage.Client()
 bucket = storage_client.bucket(GCS_BUCKET_NAME)
+
+# --- NOUVELLE ROUTE DE DÉBOGAGE ---
+@app.route("/test_firestore")
+def test_firestore():
+    """
+    Une route simple pour tester la connexion et les permissions avec Firestore.
+    """
+    try:
+        test_collection = db.collection("test_debug_collection")
+        doc_id = "test_doc"
+        doc_ref = test_collection.document(doc_id)
+
+        print("Attempting to write to Firestore...")
+        doc_ref.set({"status": "ok", "timestamp": time.time()})
+        print("Write successful.")
+
+        print("Attempting to read from Firestore...")
+        doc = doc_ref.get()
+        print("Read successful.")
+
+        if doc.exists:
+            return jsonify({
+                "message": "Firestore test successful!",
+                "data_read": doc.to_dict()
+            }), 200
+        else:
+            return jsonify({"error": "Test document not found after writing."}), 500
+
+    except Exception as e:
+        print(f"Firestore test failed: {e}")
+        traceback.print_exc()
+        return jsonify({
+            "error": "Firestore test failed.",
+            "details": str(e)
+        }), 500
 
 # --- Routes de l'application ---
 
@@ -134,7 +170,7 @@ def get_activities(athlete_id):
 
         return jsonify(activities)
 
-    except firestore.NotFound:
+    except exceptions.NotFound: # MODIFICATION ICI
          return jsonify({"error": f"Document for athlete {athlete_id} not found."}), 404
     except requests.exceptions.RequestException as e:
         return jsonify({"error": "Failed to fetch data from Strava", "details": str(e)}), 502
@@ -206,4 +242,6 @@ def sync_activities():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)), debug=True)
+
+
 
