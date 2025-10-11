@@ -72,36 +72,41 @@ def get_activities(athlete_id):
     """Récupère les activités Strava pour un athlète donné"""
     try:
         print(f"[DEBUG] Starting get_activities for athlete {athlete_id}")
-        print(f"[DEBUG] Firestore client initialized: {db}")
+        print(f"[DEBUG] Using project ID: {db.project}")
+        
+        # Test basic Firestore operations
+        try:
+            collections = [c.id for c in db.collections()]
+            print(f"[DEBUG] Available collections: {collections}")
+        except Exception as e:
+            print(f"[ERROR] Failed to list collections: {str(e)}")
         
         doc_ref = db.collection("strava_tokens").document(str(athlete_id))
-        print(f"[DEBUG] Document reference created: {doc_ref}")
+        print(f"[DEBUG] Attempting to get document: {doc_ref.path}")
         
         doc = doc_ref.get()
-        print(f"[DEBUG] Document retrieved: {doc}")
-        print(f"[DEBUG] Document exists: {doc.exists if doc else 'No doc'}")
+        print(f"[DEBUG] Document retrieved successfully: {doc.exists if doc else 'No doc'}")
         
         if not doc.exists:
             print(f"[ERROR] No tokens found for athlete {athlete_id}")
             return jsonify({"error": "Tokens not found"}), 404
 
-    except Exception as e:        
+    except Exception as e:
         print(f"[ERROR] Firestore error type: {type(e)}")
         print(f"[ERROR] Firestore error message: {str(e)}")
-        print("[ERROR] Full traceback:")
-        traceback.print_exc(file=sys.stdout)
+        print(f"[ERROR] Full error details: {dir(e)}")
+        traceback.print_exc()
         
-        # Check if it's a credentials issue
-        if "Permission denied" in str(e):
-            print("[ERROR] Possible credentials issue - verify service account permissions")
+        if hasattr(e, 'code') and e.code == 403:
             return jsonify({
                 "error": "Database authentication error",
-                "details": "Service account permissions issue"
-            }), 500
+                "details": f"Permission denied. Project: {db.project}, Error: {str(e)}"
+            }), 403
             
         return jsonify({
             "error": "Database connection error",
-            "details": str(e)
+            "details": str(e),
+            "project": db.project
         }), 500
     token_data = doc.to_dict()
 
