@@ -112,6 +112,7 @@ def get_activities(athlete_id):
 def sync_activities():
     """Récupère les nouvelles activités pour tous les athlètes stockés"""
     athletes = db.collection("strava_tokens").stream()
+    print(athletes)
     results = {}
 
     import time
