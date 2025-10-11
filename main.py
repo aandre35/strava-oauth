@@ -5,7 +5,7 @@ app = Flask(__name__)
 
 STRAVA_CLIENT_ID = os.environ["STRAVA_CLIENT_ID"]
 STRAVA_CLIENT_SECRET = os.environ["STRAVA_CLIENT_SECRET"]
-REDIRECT_URI = os.environ["REDIRECT_URI"]  # ton callback public
+REDIRECT_URI = "https://strava-oauth-1087017681131.europe-west1.run.app/"  # ton callback public
 
 STRAVA_AUTH_URL = "https://www.strava.com/oauth/authorize"
 STRAVA_TOKEN_URL = "https://www.strava.com/oauth/token"
