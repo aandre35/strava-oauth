@@ -67,10 +67,17 @@ def exchange_token():
 @app.route("/activities/<athlete_id>")
 def get_activities(athlete_id):
     """Récupère les activités Strava pour un athlète donné"""
-    doc_ref = db.collection("strava_tokens").document(str(athlete_id))
-    doc = doc_ref.get()
-    if not doc.exists:
-        return jsonify({"error": "Tokens not found"}), 404
+    try:
+        doc_ref = db.collection("strava_tokens").document(str(athlete_id))
+        doc = doc_ref.get()
+        if not doc.exists:
+            return jsonify({"error": "Tokens not found"}), 404
+
+        # ...existing code...
+
+    except Exception as e:
+        print(f"Firestore error: {str(e)}")
+        return jsonify({"error": "Database connection error"}), 500
 
     token_data = doc.to_dict()
 
