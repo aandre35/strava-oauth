@@ -109,3 +109,48 @@ def get_activities(athlete_id):
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
+
+@app.route("/sync_activities")
+def sync_activities():
+    """Récupère les nouvelles activités pour tous les athlètes stockés"""
+    athletes = db.collection("strava_tokens").stream()
+    results = {}
+
+    import time
+
+    for doc in athletes:
+        athlete_id = doc.id
+        token_data = doc.to_dict()
+
+        # Rafraîchir le token si nécessaire
+        if token_data["expires_at"] < time.time():
+            data = {
+                "client_id": STRAVA_CLIENT_ID,
+                "client_secret": STRAVA_CLIENT_SECRET,
+                "grant_type": "refresh_token",
+                "refresh_token": token_data["refresh_token"]
+            }
+            r = requests.post(STRAVA_TOKEN_URL, data=data)
+            if r.status_code != 200:
+                results[athlete_id] = {"error": r.text}
+                continue
+            new_tokens = r.json()
+            token_data["access_token"] = new_tokens["access_token"]
+            token_data["refresh_token"] = new_tokens["refresh_token"]
+            token_data["expires_at"] = new_tokens["expires_at"]
+            db.collection("strava_tokens").document(athlete_id).set(token_data)
+
+        # Récupérer les activités
+        r = requests.get(
+            os.path.join(STRAVA_API_URL, "activities"),
+            headers={"Authorization": f"Bearer {token_data['access_token']}"}
+        )
+        if r.status_code != 200:
+            results[athlete_id] = {"error": r.text}
+            continue
+
+        activities = r.json()
+        # Ici tu peux stocker les activités en base si tu veux
+        results[athlete_id] = {"count": len(activities)}
+
+    return jsonify(results)
